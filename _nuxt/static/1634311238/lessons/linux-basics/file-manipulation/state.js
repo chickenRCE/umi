@@ -1,0 +1,1 @@
+window.__NUXT__=(function(a){return {staticAssetsBase:"\u002F_nuxt\u002Fstatic\u002F1634311238",layout:"lesson",error:a,serverRendered:true,routePath:"\u002Flessons\u002Flinux-basics\u002Ffile-manipulation",config:{_app:{basePath:"\u002F",assetsPath:"\u002F_nuxt\u002F",cdnURL:a},content:{dbHash:"bab55a4c"}}}}(null));
