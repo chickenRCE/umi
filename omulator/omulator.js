@@ -15,7 +15,9 @@
 
 
 class OmulatorX86 {
-    constructor(asm, input) {
+    constructor(asm, input, error_cb) {
+        this.error_cb = error_cb
+
         asm = asm.replace(/\bdb\b/g, " .byte")
         asm = asm.replace(/\bdh\b/g, " .value")
         asm = asm.replace(/\bdd\b/g, " .long")
@@ -50,8 +52,8 @@ class OmulatorX86 {
 
         if (this.hlt_line == 0) {
             this.hlt_line = code_split.length + 1
-            this.hlt_addr = 0x400000 + this.code.length + 1
-            this.code_line_map[this.hlt_addr - 1] = this.hlt_line
+            this.hlt_addr = 0x400000 + this.code.length
+            this.code_line_map[this.hlt_addr] = this.hlt_line
         }
 
         this.input = input
@@ -67,6 +69,8 @@ class OmulatorX86 {
         this.reset_regs()
         this.reset_stack()
         this.reset_mmio()
+
+        this.breakpoints = new Set()
     }
 
     verify_asm(asm, disasm) {
@@ -120,30 +124,37 @@ class OmulatorX86 {
 
     setup_hook_mem_fetch_unmapped() {
         this.unicorn.hook_add(uc.HOOK_MEM_FETCH_UNMAPPED,
-            (emu, type, addr_lo, addr_hi, size, value_lo, value_hi, user_data) => {
-                console.log(hex(addr_lo), hex(addr_hi))
-                console.log(hex(value_lo), hex(value_hi))
-                return true
+            (emu, type, addr, size, value, user_data) => {
+                console.log("Trying to access unmapped memory @ " + hex(size) + " bytes of unmapped memory @ " + hex(addr))
+                this.unicorn.emu_stop()
+                this.error_cb(`${hex(this.get_reg("rip"))}: Trying to execute unmapped memory @ ${hex(addr)}`)
+                return false
         })
     }
 
     setup_hook_mem_read_unmapped() {
         this.unicorn.hook_add(uc.HOOK_MEM_READ_UNMAPPED,
-            (emu, type, addr_lo, addr_hi, size, value_lo, value_hi, user_data) => {
-                console.log(hex(addr_lo), hex(addr_hi))
-                return true
+            (emu, type, addr, size, value, user_data) => {
+                console.log("Trying to read " + hex(size) + " bytes of unmapped memory @ " + hex(addr))
+                this.unicorn.emu_stop()
+                this.error_cb(`${hex(this.get_reg("rip"))}: Trying to read unmapped memory @ ${hex(addr)}`)
+                return false
         })
     }
 
     setup_hook_mem_write_unmapped() {
         this.unicorn.hook_add(uc.HOOK_MEM_WRITE_UNMAPPED,
-            (emu, type, addr_lo, addr_hi, size, value_lo, value_hi, user_data) => {
-                let addr = lohi(addr_lo, addr_hi)
-                let value = lohi(value_lo, value_hi)
-                emu.mem_write(addr, p64(value))
-                console.log(hex(value >>> 32))
-                console.log(p64(value))
-                console.log(hex(u64(emu.mem_read(addr, 8))))
+            (emu, type, addr, size, value, user_data) => {
+                // let addr = lohi(addr_lo, addr_hi)
+                // let value = lohi(value_lo, value_hi)
+                // emu.mem_write(addr, p64(value))
+                // console.log(hex(value >>> 32))
+                // console.log(p64(value))
+                // console.log(hex(u64(emu.mem_read(addr, 8))))
+
+                this.unicorn.emu_stop()
+                this.error_cb(`${hex(this.get_reg("rip"))}: Trying to write unmapped memory @ ${hex(addr)}`)
+                return false
         })
     }
 
@@ -179,7 +190,9 @@ class OmulatorX86 {
     }
 
     get_reg(reg) {
-        return this.get_regs()[reg]
+        // TODO: dont use Number, use BigInt
+        // one day this is gonna haunt us
+        return Number(this.get_regs()[reg])
     }
 
     get_regs() {
@@ -193,29 +206,29 @@ class OmulatorX86 {
             // 'ebp': this.unicorn.reg_read_i32(uc.X86_REG_EBP),
             // 'esp': this.unicorn.reg_read_i32(uc.X86_REG_ESP),
             // 'eip': this.unicorn.reg_read_i32(uc.X86_REG_EIP),
-            'rax': this.unicorn.reg_read_i64(uc.X86_REG_RAX),
-            'rbx': this.unicorn.reg_read_i64(uc.X86_REG_RBX),
-            'rcx': this.unicorn.reg_read_i64(uc.X86_REG_RCX),
-            'rdx': this.unicorn.reg_read_i64(uc.X86_REG_RDX),
-            'rdi': this.unicorn.reg_read_i64(uc.X86_REG_RDI),
-            'rsi': this.unicorn.reg_read_i64(uc.X86_REG_RSI),
-            'r8': this.unicorn.reg_read_i64(uc.X86_REG_R8),
-            'r9': this.unicorn.reg_read_i64(uc.X86_REG_R9),
-            'r10': this.unicorn.reg_read_i64(uc.X86_REG_R10),
-            'r11': this.unicorn.reg_read_i64(uc.X86_REG_R11),
-            'r12': this.unicorn.reg_read_i64(uc.X86_REG_R12),
-            'r13': this.unicorn.reg_read_i64(uc.X86_REG_R13),
-            'r14': this.unicorn.reg_read_i64(uc.X86_REG_R14),
-            'r15': this.unicorn.reg_read_i64(uc.X86_REG_R15),
-            'rbp': this.unicorn.reg_read_i64(uc.X86_REG_RBP),
-            'rsp': this.unicorn.reg_read_i64(uc.X86_REG_RSP),
-            'rip': this.unicorn.reg_read_i64(uc.X86_REG_RIP)
+            'rax': this.unicorn.reg_read_u64(uc.X86_REG_RAX),
+            'rbx': this.unicorn.reg_read_u64(uc.X86_REG_RBX),
+            'rcx': this.unicorn.reg_read_u64(uc.X86_REG_RCX),
+            'rdx': this.unicorn.reg_read_u64(uc.X86_REG_RDX),
+            'rdi': this.unicorn.reg_read_u64(uc.X86_REG_RDI),
+            'rsi': this.unicorn.reg_read_u64(uc.X86_REG_RSI),
+            'r8': this.unicorn.reg_read_u64(uc.X86_REG_R8),
+            'r9': this.unicorn.reg_read_u64(uc.X86_REG_R9),
+            'r10': this.unicorn.reg_read_u64(uc.X86_REG_R10),
+            'r11': this.unicorn.reg_read_u64(uc.X86_REG_R11),
+            'r12': this.unicorn.reg_read_u64(uc.X86_REG_R12),
+            'r13': this.unicorn.reg_read_u64(uc.X86_REG_R13),
+            'r14': this.unicorn.reg_read_u64(uc.X86_REG_R14),
+            'r15': this.unicorn.reg_read_u64(uc.X86_REG_R15),
+            'rbp': this.unicorn.reg_read_u64(uc.X86_REG_RBP),
+            'rsp': this.unicorn.reg_read_u64(uc.X86_REG_RSP),
+            'rip': this.unicorn.reg_read_u64(uc.X86_REG_RIP)
         }
     }
 
     set_reg(reg, value) {
         var reg_uc = this.reg_name_to_uc(reg)
-        this.unicorn.reg_write_i64(reg_uc, value)
+        this.unicorn.reg_write_u64(reg_uc, value)
     }
 
     reset_regs(inits) {
@@ -247,13 +260,21 @@ class OmulatorX86 {
             this.write_mem(i, [0,0,0,0,0,0,0,0])
     }
 
-    reset_mmio() {
+    reset_mmio_input(input) {
+        this.input = input
         for (var i = 0x1000; i <= 0x1fff; i += 8)
             this.write_mem(i, [0,0,0,0,0,0,0,0])
+        this.write_mem(0x1000, this.input.slice(0, 0x1000))
+    }
+
+    reset_mmio(input) {
         for (var i = 0x2000; i <= 0x2fff; i += 8)
             this.write_mem(i, [0,0,0,0,0,0,0,0])
 
-        this.write_mem(0x1000, this.input)
+        // if no arg given, use the previously stored input
+        if (input)
+            this.input = input
+        this.reset_mmio_input(this.input)
     }
 
     read_mem(addr, size) {
@@ -266,12 +287,34 @@ class OmulatorX86 {
 
     step(n) {
         let rip = this.get_reg("rip")
-        this.unicorn.emu_start(rip, this.text_end, 0, n)
+        try {
+            this.unicorn.emu_start(rip, this.hlt_addr, 0, n)
+        } catch (err) {
+            console.error(err)
+            return false
+        }
+        return true
     }
 
     run() {
-        let rip = this.get_reg("rip")
-        this.unicorn.emu_start(rip, this.hlt_addr - 1, 0, 0)
+        // this.unicorn.emu_start(rip, this.hlt_addr, 0, 0)     // last arg is the number of steps, 0 means non-stop
+        // this.unicorn.emu_start(rip, this.hlt_addr, 0, 10000)    // don't step indefinitely, in case of infinite loop
+
+        // well this seems to be the easiest way to implement a breakpoint functionality
+        // shldnt affect perf by much
+        for (let i = 0; i < 10000; ++i) {
+            if (!this.step(1))  // if there was an error when stepping
+                break
+
+            let rip = this.get_reg("rip")
+            if (this.breakpoints.has(rip)) {
+                return
+            }
+
+            if (rip == this.hlt_addr) {
+                return
+            }
+        }
     }
 
     asm(asm) {
@@ -280,6 +323,60 @@ class OmulatorX86 {
 
     disasm(code) {
         return this.d.disasm(code, 0x400000)
+    }
+
+    line_num_to_addr(line_num) {
+        for (let addr in this.code_line_map) {
+            addr = Number(addr)
+            if (this.code_line_map[addr] == line_num) {
+                return addr
+            }
+        }
+        return 0
+    }
+
+    toggle_breakpoint_at_line(line_num) {
+        const addr = this.line_num_to_addr(line_num)
+        if (addr == 0) return
+        if (this.breakpoints.has(addr))
+            this.remove_breakpoint_at_addr(addr)
+        else
+            this.set_breakpoint_at_addr(addr)
+    }
+
+    set_breakpoint_at_line(line_num) {
+        const addr = this.line_num_to_addr(line_num)
+        if (addr == 0) return
+        this.set_breakpoint_at_addr(addr)
+    }
+
+    set_breakpoint_at_addr(addr) {
+        this.breakpoints.add(addr)
+    }
+
+    remove_breakpoint_at_line(line_num) {
+        const addr = this.line_num_to_addr(line_num)
+        if (addr == 0) return
+        this.remove_breakpoint_at_addr(addr)
+    }
+
+    remove_breakpoint_at_addr(addr) {
+        this.breakpoints.delete(addr)
+    }
+
+    clear_breakpoints() {
+        this.breakpoints.clear()
+    }
+
+    has_breakpoint_at_line(line_num) {
+        const addr = this.line_num_to_addr(line_num)
+        if (addr == 0) return false
+        return this.breakpoints.has(addr)
+    }
+
+    has_code_at_line(line_num) {
+        const addr = this.line_num_to_addr(line_num)
+        return addr != 0
     }
 }
 
