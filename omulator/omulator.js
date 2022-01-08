@@ -55,6 +55,7 @@ class OmulatorX86 {
             this.hlt_addr = 0x400000 + this.code.length
             this.code_line_map[this.hlt_addr] = this.hlt_line
         }
+        this.code_line_map[0x400000 + this.code.length] = code_split.length + 1
 
         this.input = input
         // let disasm = this.disasm(code)
@@ -287,6 +288,11 @@ class OmulatorX86 {
 
     step(n) {
         let rip = this.get_reg("rip")
+
+        if (rip == this.text_base + this.code.length) {
+            return true
+        }
+
         try {
             this.unicorn.emu_start(rip, this.hlt_addr, 0, n)
         } catch (err) {
@@ -312,6 +318,10 @@ class OmulatorX86 {
             }
 
             if (rip == this.hlt_addr) {
+                return
+            }
+
+            if (rip == this.text_base + this.code.length) {
                 return
             }
         }

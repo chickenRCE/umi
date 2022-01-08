@@ -30,7 +30,6 @@
  * @public
  */
 
-
 /*!---------------------------------------------------------------------------------------------
  *  Copyright (C) David Owens II, owensd.io. All rights reserved.
  *--------------------------------------------------------------------------------------------*/
@@ -51,15 +50,6 @@
  * vue-no-ssr v1.1.1
  * (c) 2018-present egoist <0x142857@gmail.com>
  * Released under the MIT License.
- */
-
-/**
- * Prism: Lightweight, robust, elegant syntax highlighting
- *
- * @license MIT <https://opensource.org/licenses/MIT>
- * @author Lea Verou <https://lea.verou.me>
- * @namespace
- * @public
  */
 
 
